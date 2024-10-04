@@ -2,11 +2,11 @@
 
 
 ## Table of Contents
-- [Inspire Module Documentation](documentation/INSPIRE_EN)
-- [Capabilities Module Documentation](documentation/CAPABILITIES_EN)
-- [Database Module Documentation](documentation/DATABASE_EN)
-- [Logging Module Documentation](documentation/LOGGING_EN)
-- [Reports Module Documentation](documentation/REPORTS_EN)
+- [Inspire Module Documentation](documentation/INSPIRE_EN.md)
+- [Capabilities Module Documentation](documentation/CAPABILITIES_EN.md)
+- [Database Module Documentation](documentation/DATABASE_EN.md)
+- [Logging Module Documentation](documentation/LOGGING_EN.md)
+- [Reports Module Documentation](documentation/REPORTS_EN.md)
 
 ## Requirements
 

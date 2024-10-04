@@ -1,11 +1,11 @@
 # Documentación del proyecto
 
 ## Tabla de contenidos
-- [Documentación del Módulo Inspire](documentation/INSPIRE_ES)
-- [Documentación del Módulo de Capacidades](documentation/CAPABILITIES_ES)
-- [Documentación del Módulo de Base de Datos](documentation/DATABASE_ES)
-- [Documentación del módulo Logger](documentation/LOGGING_ES)
-- [Documentación del Módulo de Informes](documentation/REPORTS_ES)
+- [Documentación del Módulo Inspire](documentation/INSPIRE_ES.md)
+- [Documentación del Módulo de Capacidades](documentation/CAPABILITIES_ES.md)
+- [Documentación del Módulo de Base de Datos](documentation/DATABASE_ES.md)
+- [Documentación del módulo Logger](documentation/LOGGING_ES.md)
+- [Documentación del Módulo de Informes](documentation/REPORTS_ES.md)
 
 ## Instrucciones de Instalación
 
