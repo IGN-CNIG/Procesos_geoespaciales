@@ -1,0 +1,47 @@
+{
+    "Andalucía": {
+        "beginlifespanversion": "beginlifespanversion",
+        "localid": "localid",
+        "namespace": "namespace",
+        "localtype": "localisedcharacterstring",
+        "language": "language",
+        "nativeness": "nativeness",
+        "namestatus": "namestatus",
+        "name_text": "text",
+        "script": "script",
+        "type": "type"
+    },
+    "Aragón": {
+        "gn_beginlifespanversion": "beginlifespanversion",
+        "gn_inspireid_base_identifier_base_localid": "localid",
+        "gn_inspireid_base_identifier_base_namespace": "namespace",
+        "gn_geographicalname_gn_language": "language",
+        "gn_geographicalname_gn_nativeness_href": "nativeness",
+        "gn_geographicalname_gn_namestatus_href": "namestatus",
+        "gn_geographicalname_gn_spellingofname_gn_text": "text"
+    },
+    "Valencia": {
+        "beginlifespanversion": "beginlifespanversion",
+        "localid": "localid",
+        "namespace": "namespace",
+        "localisedcharacterstring": "localisedcharacterstring",
+        "language": "language",
+        "hrefnativeness": "nativeness",
+        "hrefnamestatus": "namestatus",
+        "text": "text",
+        "script": "script",
+        "hreftype": "type"
+    },
+    "Cataluña": {
+        "beginlifespanversion": "beginlifespanversion",
+        "localid": "localid",
+        "namespace": "namespace",
+        "localisedcharacterstring": "localisedcharacterstring",
+        "language": "language",
+        "nativeness": "nativeness",
+        "namestatus": "namestatus",
+        "text": "text",
+        "script": "script",
+        "type": "type"
+    }
+}
