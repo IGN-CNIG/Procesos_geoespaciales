@@ -1,0 +1,388 @@
+{
+    "TERCIO_NORTE": {
+        "tiles": [
+            "30TYN",
+            "30TXN",
+            "30TWN",
+            "30TXP",
+            "30TYP",
+            "30TWP",
+            "29TQH",
+            "29TPH",
+            "30TUN",
+            "30TVN",
+            "29TQJ",
+            "29TPJ",
+            "30TUP",
+            "30TVP",
+            "29TQF",
+            "29TPF",
+            "29TPG",
+            "29TQG",
+            "29TNH",
+            "29TMH",
+            "29TMJ",
+            "29TNJ",
+            "29TNG",
+            "29TMG"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 100,
+                    "max": 5000
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 0,
+                    "max": 1300
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    },
+    "RESTO_PENINSULA": {
+        "tiles": [
+            "31TCH",
+            "31TDH",
+            "31TEH",
+            "30TUM",
+            "30TVM",
+            "30TWM",
+            "30TXM",
+            "30TYM",
+            "31TCG",
+            "31TDG",
+            "31TEG",
+            "30TUL",
+            "30TVL",
+            "30TWL",
+            "30TXL",
+            "30TYL",
+            "31TCF",
+            "31TDF",
+            "29TPE",
+            "29TQE",
+            "30TUK",
+            "30TVK",
+            "30TWK",
+            "30TXK",
+            "30TYK",
+            "29SPD",
+            "29SQD",
+            "30SUJ",
+            "30SVJ",
+            "30SWJ",
+            "30SXJ",
+            "30SYJ",
+            "29SPC",
+            "29SQC",
+            "30SUH",
+            "30SVH",
+            "30SWH",
+            "30SXH",
+            "30SYH",
+            "29SPB",
+            "29SQB",
+            "30SUG",
+            "30SVG",
+            "30SWG",
+            "30SXG",
+            "30SYG",
+            "29SPA",
+            "29SQA",
+            "30SUF",
+            "30SVF",
+            "30SWF",
+            "30SXF",
+            "29SQV",
+            "30STE",
+            "30SUE",
+            "30SVE",
+            "30SWE",
+            "30STD",
+            "30SUD",
+            "30SVD",
+            "30SWD"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 300,
+                    "max": 6000
+                },
+                "NirGB": {
+                    "min": 300,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 0,
+                    "max": 2000
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    },
+    "BALEARES": {
+        "tiles": [
+            "31TCE",
+            "31TDE",
+            "31TEE",
+            "31TFE",
+            "31SCD",
+            "31SDD",
+            "31SED",
+            "31SFD",
+            "31SCC",
+            "31SDC"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 300,
+                    "max": 6000
+                },
+                "NirGB": {
+                    "min": 300,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 0,
+                    "max": 2000
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    },
+    "CANARIAS_OESTE": {
+        "tiles": [
+            "27RYN",
+            "27RYM",
+            "27RYL"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 100,
+                    "max": 5000
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 0,
+                    "max": 1300
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    },
+    "CANARIAS_CENTRAL": {
+        "tiles": [
+            "28RBT",
+            "28RBS",
+            "28RCS",
+            "28RDS",
+            "28RBR",
+            "28RCR",
+            "28RDR"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 100,
+                    "max": 5000
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 0,
+                    "max": 1700
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    },
+    "CANARIAS_ESTE": {
+        "tiles": [
+            "28RET",
+            "28RFT",
+            "28RES",
+            "28RFS",
+            "28RER"
+        ],
+        "enhancement_data": {
+            "Spring": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4750
+                }
+            },
+            "Summer": {
+                "RGB": {
+                    "min": 300,
+                    "max": 6000
+                },
+                "NirGB": {
+                    "min": 300,
+                    "max": 6000
+                }
+            },
+            "Autumn": {
+                "RGB": {
+                    "min": 0,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4500
+                }
+            },
+            "Winter": {
+                "RGB": {
+                    "min": 100,
+                    "max": 3500
+                },
+                "NirGB": {
+                    "min": 0,
+                    "max": 4000
+                }
+            }
+        }
+    }
+}

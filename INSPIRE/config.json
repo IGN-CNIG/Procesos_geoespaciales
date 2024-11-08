@@ -1,0 +1,60 @@
+{
+    "Andalucía": {
+        "service": {
+            "url": "https://www.ideandalucia.es/wfs-nga-inspire/services?",
+            "type": "WFS",
+            "version": "2.0.0",
+            "parameters": {
+                "typeNames": "gn:NamedPlace",
+                "srsName": "EPSG:4258"
+            }
+        },
+        "database": {
+            "schema": "01_Andalucia",
+            "table": "and_inspire"
+        }
+    },
+    "Aragón": {
+        "service": {
+            "url": "https://idearagon.aragon.es/inspireIdearagon/services/wfsGN?",
+            "type": "WFS",
+            "version": "2.0.0",
+            "parameters": {
+                "typeNames": "gn:NamedPlace",
+                "srsName": "EPSG:4258"
+            }
+        },
+        "database": {
+            "schema": "02_Aragon",
+            "table": "arg_inspire"
+        }
+    },
+    "Valencia": {
+        "service": {
+            "url": "http://catalogo.icv.gva.es/inspireICV/services/wfsGN?",
+            "type": "WFS",
+            "version": "2.0.0",
+            "parameters": {
+                "typeNames": "gn:NamedPlace",
+                "srsName": "EPSG:4258"
+            }
+        },
+        "database": {
+            "schema": "10_ComunitatValenciana",
+            "table": "val_inspire"
+        }
+    },
+    "Cataluña": {
+        "service": {
+            "url": "https://geoserveis.ide.cat/servei/catalunya/inspire-noms-geografics/atom/inspire-noms-geografics.atom.xml",
+            "type": "ATOM",
+            "parameters": {
+                "typeNames": "NamedPlace"
+            }
+        },
+        "database": {
+            "schema": "09_Cataluña",
+            "table": "icc_inspire"
+        }
+    }
+}

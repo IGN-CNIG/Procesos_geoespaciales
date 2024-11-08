@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="cnig" content="yes">
+    <title>Visor base</title>
+    <!-- Estilo de la API -->
+    <link type="text/css" rel="stylesheet" href="https://componentes.cnig.es/api-core/assets/css/apiign.ol.min.css">
+    <style>
+        #map {
+            width: auto;
+            height: 100%;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+        }
+    </style>
+
+    <script type="text/javascript" src="https://componentes.cnig.es/api-core/js/apiign.ol.min.js"></script>
+
+    <script type="text/javascript" src="https://componentes.cnig.es/api-core/js/configuration.js"></script>
+
+</head>
+
+<body>
+    <!-- Contenedor principal del mapa -->
+    <div id="map"></div>
+    <!-- Ficheros javascript de la API -->
+    <script>
+        // var map = new ol.Map({
+        //     target: 'map',
+        //     layers: [
+        //         new ol.layer.Tile({
+        //             source: new ol.source.OSM()
+        //         }),
+        //         vectorLayer
+        //     ],
+        //     view: new ol.View({
+        //         center: ol.proj.fromLonLat([-3.7038, 40.4168]),
+        //         zoom: 6
+        //     })
+        // });
+
+
+        // Configuración del mapa
+        const mapjs = M.map({
+            container: 'map', //id del contenedor del mapa
+            controls: ['backgroundlayers'],
+            center: { x: -753876.7788048604, y: 4448813.695932053 },
+            zoom: 5,
+        });
+
+        map = mapjs.getMapImpl()
+
+
+        var vectorSource = new ol.source.Vector({
+            url: 'data/sentinel2-grid.geojson',
+            format: new ol.format.GeoJSON()
+        });
+
+        var vectorLayer = new ol.layer.Vector({
+
+            source: vectorSource,
+            style: function (feature) {
+                const selected = feature.get('selected');
+                return new ol.style.Style({
+                    fill: new ol.style.Fill({
+                        color: selected ? 'rgba(255, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0)'
+                    }),
+                    stroke: new ol.style.Stroke({
+                        color: selected ? 'red' : 'blue',
+                        width: selected ? 3 : 2
+                    })
+                });
+            }
+        });
+
+
+        const layer = new M.layer.GenericVector({
+            // minZoom: 6,
+            // maxZoom: 10,
+            // opacity: 0.2,
+            // isBase: true,
+            // legend: 'Prueba de leyenda',
+            // name: 'rasterestatico'
+        }, {}, vectorLayer);
+
+        map.addLayer(vectorLayer)
+        vectorLayer.setZIndex(50)
+        // mapjs.addLayers(layer)
+
+
+
+
+        var selectedFeatures = [];
+
+        map.on('singleclick', function (event) {
+            map.forEachFeatureAtPixel(event.pixel, function (feature) {
+                const isSelected = feature.get('selected');
+                feature.set('selected', !isSelected);
+
+                if (isSelected) {
+                    selectedFeatures = selectedFeatures.filter(item => item !== feature);
+                } else {
+                    selectedFeatures.push(feature);
+                }
+                console.log('Currently selected features:', selectedFeatures);
+            });
+
+            vectorLayer.changed();
+        });
+
+        // Function to get the selected features in GeoJSON format
+        function getSelectedFeatures() {
+            return selectedFeatures.map(feature => feature.getProperties());
+        }
+
+        // Function to select tiles by their ID
+        function selectTilesOnMap(selectedTileNames) {
+            // Check if the vector source is loaded
+            if (vectorSource.getFeatures().length === 0) {
+                vectorSource.once('change', function () {
+                    // Now the source is loaded, proceed with selection
+                    applyTileSelection(selectedTileNames);
+                });
+            } else {
+                // The source is already loaded, apply selection immediately
+                applyTileSelection(selectedTileNames);
+            }
+        }
+
+        // Helper function to apply the tile selection logic
+        function applyTileSelection(selectedTileNames) {
+            vectorSource.forEachFeature(function (feature) {
+                // Check if the feature's ID is in the selectedTileNames list
+                const tileName = feature.get('Name'); // Or use a custom property like feature.get('tile_id')
+                const isSelected = selectedTileNames.includes(tileName);
+
+                // Set the 'selected' property of the feature based on whether it should be selected
+                feature.set('selected', isSelected);
+                if (isSelected) {
+                    selectedFeatures.push(feature);
+                }
+            });
+
+            // Refresh the layer to apply the new styles
+            vectorLayer.changed();
+        }
+
+    </script>
+</body>
+
+</html>
