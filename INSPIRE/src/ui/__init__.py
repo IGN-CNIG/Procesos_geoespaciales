@@ -1,6 +1,7 @@
 from datetime import datetime
-import os
+import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,8 +13,8 @@ from dotenv import load_dotenv
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem,
     QLineEdit, QPushButton, QCheckBox, QFormLayout, QLabel, QInputDialog, QDialog, 
-    QDialogButtonBox, QTabWidget, QComboBox, QDateEdit, QMenuBar, QAction, QSpacerItem, 
-    QSizePolicy, QSpinBox, QMessageBox, QTableWidget, QTableWidgetItem
+    QDialogButtonBox, QTabWidget, QComboBox, QDateEdit, QMenuBar, QAction, 
+    QSpinBox, QMessageBox, QTableWidget, QTableWidgetItem, QTreeView, QFileSystemModel
 )
 from PyQt5.QtCore import QDate, QThread, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -871,9 +872,18 @@ class Worker(QThread):
                 
                 schema = info.get('database').get('schema')
                 table = info.get('database').get('table')
-                table_new = info.get('database').get('table') + '_new'
+                table_backup = table + '_backup'
+                table_new = table + '_new'
+                
                 database = GeoDBManager()
-                old_items = database.get_count(schema, table)
+                if database.table_exists(schema, table_backup):
+                    database.cursor.execute(f'DROP TABLE "{table_backup}";')
+                if database.rename_table(schema, table, table_backup):
+                    old_items = database.get_count(schema, table_backup)
+                    table_new = table
+                else:
+                    old_items = database.get_count(schema, table)
+                    
                 
                 today = f'{datetime.now().year}{datetime.now().month}{datetime.now().day}'
                 report_name = f'Informe_{region}_{today}'
@@ -1010,7 +1020,9 @@ class MainWindow(QWidget):
             FileNotFoundError: If any of the provided paths do not exist.
         """
         super().__init__()
-        self.services_config = Path(services_config).resolve().as_posix() if (services_config is not None and os.path.exists(services_config)) else Path('config.json').resolve().as_posix()
+        self.parent_dir = Path(importlib.util.find_spec('__init__').origin).parent
+        config_file = os.path.join(self.parent_dir, 'config.json')
+        self.services_config = Path(services_config).resolve().as_posix() if (services_config is not None and os.path.exists(services_config)) else Path(config_file).resolve().as_posix()
         self.schema_info = Path(schema_info).resolve().as_posix() if (schema_info is not None and os.path.exists(schema_info)) else Path('schema.json').resolve().as_posix()
         self.database_config = Path(database_config).resolve().as_posix() if (database_config is not None and os.path.exists(database_config)) else Path('.env').resolve().as_posix()
         self.table_mapping = Path(table_mapping).resolve().as_posix() if (table_mapping is not None and os.path.exists(table_mapping)) else Path('mapping.json').resolve().as_posix()
@@ -1057,9 +1069,9 @@ class MainWindow(QWidget):
         self.layout.setMenuBar(self.menu_bar)
 
         # Title label for the form
-        self.title_label = QLabel("Time Period to Process")
-        self.title_label.setStyleSheet("font-weight: bold; font-size: 16px;")  # Optional styling
-        self.layout.addWidget(self.title_label)
+        title_label = QLabel("Time Period to Process")
+        title_label.setStyleSheet("font-weight: bold; font-size: 18px;")  # Optional styling
+        self.layout.addWidget(title_label)
 
         # Form layout for date intervals
         self.form_layout = QFormLayout()
@@ -1100,8 +1112,23 @@ class MainWindow(QWidget):
         
         # Create a checkbox for generating a change control report
         self.change_control_checkbox = QCheckBox("Generate Change Control Report")
-        self.change_control_checkbox.setChecked(False)  # Default unchecked
+        self.change_control_checkbox.setChecked(True)  # Default checked
         self.layout.addWidget(self.change_control_checkbox)  # Add checkbox to the layout
+        
+        # Title label for the form
+        title_label = QLabel("Reports")
+        title_label.setStyleSheet("font-weight: bold; font-size: 18px;")  # Optional styling
+        self.layout.addWidget(title_label)
+        # Set up the QFileSystemModel
+        self.folder_path = os.path.join(self.parent_dir, 'reports')
+        os.mkdir(self.folder_path)
+        self.model = QFileSystemModel()
+        self.model.setRootPath(self.folder_path)  # Set the root path for the model
+        self.tree_view = QTreeView()
+        self.tree_view.setModel(self.model)
+        self.tree_view.setRootIndex(self.model.index(self.folder_path))
+        self.tree_view.doubleClicked.connect(self.open_file)  # Connect double-click to open file
+        self.layout.addWidget(self.tree_view)
 
         # Create a button layout for the Execute button
         self.execute_button_layout = QHBoxLayout()
@@ -1120,15 +1147,14 @@ class MainWindow(QWidget):
         self.layout.addWidget(self.status_label)
 
         # Add a spacer to keep the form at the top
-        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.layout.addItem(spacer)
+        self.layout.addStretch()
 
         # Set the main window layout
         self.setLayout(self.layout)
 
         # Set window properties
         self.setWindowTitle("IGN-CNIG INSPIRE SYNC")
-        self.resize(400, 300)
+        self.resize(800, 600)
         
     def show_config_paths(self) -> None:
         """
@@ -1156,6 +1182,23 @@ class MainWindow(QWidget):
             self.custom_interval_label.setVisible(False)  # Hide the label
             self.custom_interval_field.setVisible(False)  # Hide the input field
             self.custom_interval_field.clear()  # Clear input when hiding
+    
+    def open_file(self, index):
+        # Get the file path from the index
+        file_path = self.model.filePath(index)
+
+        # Check if the file exists and then open it
+        if os.path.isfile(file_path):
+            try:
+                # Open the file using the default program
+                if sys.platform == 'win32':  # For Windows
+                    os.startfile(file_path)
+                elif sys.platform == 'darwin':  # For macOS
+                    subprocess.run(['open', file_path])
+                else:  # For Linux/Unix
+                    subprocess.run(['xdg-open', file_path])
+            except Exception as e:
+                print(f"Error opening file: {e}")
 
     def open_config_editor(self) -> None:
         """
