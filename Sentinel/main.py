@@ -20,7 +20,7 @@ def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[b
     # Configuration settings
     MAX_CLOUD_COVER = int(os.getenv('MAX_CLOUD_COVER')) or 5
     DAYS_OFFSET = int(os.getenv('DAYS_OFFSET')) or 30 # This must be enough so it detects an image with a valid cloud coverage!
-    OUTPUT_CRS = os.getenv('OUTPUT_CRS') or 4326
+    OUTPUT_CRS = os.getenv('OUTPUT_CRS') or 3857
     THREADS = int(os.getenv('THREADS')) or 2
 
     def execute_process(region_name, tile, enhancements):
@@ -38,7 +38,7 @@ def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[b
                 max_cloud_cover=MAX_CLOUD_COVER,
                 output_crs=OUTPUT_CRS,
                 enhancements=enhancements,
-                remove_original=False
+                remove_original=True
             )
     
     # Process each tile in the spanish territory,

@@ -8,6 +8,24 @@ from typing import Optional, List, Dict, Tuple
 from area import area
 from osgeo import gdal
 
+def get_dates_from_filename(filename:str) -> List[str]:
+    """
+    Gets date information from a filename. The date format can be YYYYMMDD or YYYYMMDDTHHMMSS.
+
+    Parameters:
+        filename (str): The original filename containing the date.
+
+    Returns:
+        List[str]: List of the dates found in the filename.
+
+    Example:
+        >>> remove_dates_from_filename("file_20230101T123456_data.txt")
+        ['20230101T123456']
+    """
+    # RegEx to find dates in YYYYMMDD or YYYYMMDDTHHMMSS format.
+    date_pattern = r'\d{8}(T\d{6})?'
+    
+    return re.findall(date_pattern, filename)
 
 def remove_dates_from_filename(filename:str) -> str:
     """
@@ -178,7 +196,7 @@ def cumulative_count_cut(band:np.matrix, min_percentile:Optional[int]=2, max_per
     max_val = np.nanpercentile(band, max_percentile)
     return (min_val,max_val)
 
-def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str, area_name:str, date:str, suffix:str = 'RGB') -> None:
+def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str, date:str, suffix:str = 'RGB') -> None:
     """
     Apply contrast enhancement to an image file based on seasonal data.
 
@@ -196,17 +214,19 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
     """
         
     if enhancements is not None:
-        file_name = os.path.basename(input_file)
+        origin_filename = os.path.basename(input_file)
         gdal.UseExceptions()
         dataset = gdal.Open(input_file)
         if not dataset:
             raise FileNotFoundError(f"Unable to open {input_file}")
         num_bands = dataset.RasterCount
         # Create a new geotiff file where we are going to store the adjusted bands
-        driver = gdal.GetDriverByName('GTiff')
-        file_name = remove_dates_from_filename(file_name)
-        corrected_file_path = f'{output_dir}/{file_name}'
+        file_name = remove_dates_from_filename(origin_filename)
+        corrected_file_path = f'{output_dir}/TEMP_{file_name}'
+        corrected_file_path_COG = f'{output_dir}/{file_name}'.replace('.GeoTIFF', '.tif')
+
         os.makedirs(os.path.dirname(corrected_file_path), exist_ok=True)
+        driver = gdal.GetDriverByName('GTiff')
         out_dataset = driver.Create(corrected_file_path, dataset.RasterXSize, dataset.RasterYSize, num_bands, gdal.GDT_Byte) # The satellite images are returned in 16-bits, but we need an 8-bits imageº1
         out_dataset.SetProjection(dataset.GetProjection())
         out_dataset.SetGeoTransform(dataset.GetGeoTransform())
@@ -238,12 +258,30 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
                     out_band.WriteArray(scaled_band)
                     #out_band.SetNoDataValue(0)
                 else:
-                    os.remove(corrected_file_path)
                     raise ValueError(f'Could not read the band {index}, image potentially faulty.')
             except:
-                os.remove(corrected_file_path)
                 raise ValueError(f'The band {index} has no data, image could be faulty.')
+        
+        if out_dataset is not None:
+            options = gdal.TranslateOptions(
+                format="COG",
+                creationOptions=[
+                    f"TILING_SCHEME=GoogleMapsCompatible",
+                    f"COMPRESS=LZW"
+                ],
+                metadataOptions={
+                    "TIFFTAG_DATETIME": date
+                }
+            )
+            try:
+                # Perform the translation
+                gdal.Translate(destName=corrected_file_path_COG, srcDS=out_dataset, options=options)
+                print(f'[{file_name}] COG created successfully: {corrected_file_path_COG}')
+            except Exception as e:
+                print(f"Error al ejecutar gdal.Translate: {e}")
+
         # After we've finished writing the output file, we clean the memory
         band_data = None
         dataset = None
         out_dataset = None
+        os.remove(corrected_file_path)

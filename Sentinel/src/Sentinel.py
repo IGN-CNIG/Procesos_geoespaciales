@@ -183,29 +183,34 @@ class SentinelTile():
         Example:
             >>> datacube_file_path = tile.download_datacube(datacube, 'S2A_MSIL2A_20240819', 'RGB')
         """
-        try:
-            processed_file_path = f'{self.datacubes_dir}/{file_name}_{suffix}.GeoTIFF'
-
-            self.log(f'[{self.tile_id}] {suffix}: Downloading satellite image {file_name}...')
-            
-            # Create a job for the datacube and download the results.
-            job = target_datacube.create_job(out_format="GTiff", title="Sentinel2_MA")
-            job.start_and_wait()
-            job.get_results().download_file(target=processed_file_path)
-            # This returns a proxy error
-            # rgb.download(outputfile=file_path, format='GTiff', validate=False)
-            self.log(f'[{self.tile_id}] {suffix}: Satellite image downloaded.')
+        processed_file_path = f'{self.datacubes_dir}/{file_name}_{suffix}.GeoTIFF'
+        if not os.path.exists(processed_file_path):
+            retries = 0
+            while retries < 100:
+                try:
+                    self.log(f'[{self.tile_id}] {suffix}: Downloading satellite image {file_name}...')
+                    
+                    # Create a job for the datacube and download the results.
+                    job = target_datacube.create_job(out_format="GTiff", title="Sentinel2_MA")
+                    job.start_and_wait()
+                    job.get_results().download_file(target=processed_file_path)
+                    # This returns a proxy error
+                    # rgb.download(outputfile=file_path, format='GTiff', validate=False)
+                    self.log(f'[{self.tile_id}] {suffix}: Satellite image downloaded.')
+                    return processed_file_path
+                except FileNotFoundError as fnf_error:
+                    self.log(f"File not found during datacube processing: {fnf_error}", logging.ERROR)
+                    raise
+                except openeo.rest.OpenEoApiPlainError:
+                    self.log(f'[{self.tile_id}] ERROR. Retrying download in 5 seconds.', logging.WARNING)
+                    time.sleep(5)
+                except Exception as e:
+                    self.log(f"Unexpected error: {e}", logging.ERROR)
+                    raise
+            # If the loop completes without a successful download, raise an exception
+            raise Exception(f"[{self.tile_id}] {suffix}: Failed to download datacube after 100 attempts.")
+        else:
             return processed_file_path
-        except FileNotFoundError as fnf_error:
-            self.log(f"File not found during datacube processing: {fnf_error}", logging.ERROR)
-            raise
-        except openeo.rest.OpenEoApiPlainError:
-            self.log(f'[{self.tile_id}] ERROR. Retrying download in 5 seconds.', logging.WARNING)
-            time.sleep(5)
-            self.download_datacube(target_datacube, file_name, suffix)
-        except Exception as e:
-            self.log(f"Unexpected error: {e}", logging.ERROR)
-            raise
 
     def process_bands(self, datacube: openeo.DataCube, file_name: str, bands: List[str], suffix: str, image_metadata:Dict[str, Any], enhancements:Dict[str,Any], remove_original: bool) -> bool:
         """
@@ -227,17 +232,21 @@ class SentinelTile():
         datacube_filtered = datacube.filter_bands(bands=bands)
         try:
             datacube_file_path = self.download_datacube(target_datacube=datacube_filtered, file_name=file_name, suffix=suffix)
-            with open(datacube_file_path.replace('.GeoTIFF', '.json'), 'w') as metadata:
-                json.dump(image_metadata, metadata, indent=4) 
-            apply_contrast_enhancement(enhancements, input_file=datacube_file_path, output_dir=self.service_dir, suffix=suffix, area_name=self.region, date=image_metadata['properties']['start_datetime'])
-            self.log(f'[{self.tile_id}] {suffix}: Satellite image enhanced.')
+            if datacube_file_path is not None and os.path.exists(datacube_file_path):
+                with open(datacube_file_path.replace('.GeoTIFF', '.json'), 'w') as metadata:
+                    json.dump(image_metadata, metadata, indent=4)
+                
+                apply_contrast_enhancement(enhancements, input_file=datacube_file_path, output_dir=self.service_dir, suffix=suffix, date=image_metadata['properties']['start_datetime'])
+                self.log(f'[{self.tile_id}] {suffix}: Satellite image enhanced.')
+                if remove_original:
+                    os.remove(datacube_file_path)
+                    os.remove(datacube_file_path.replace('.GeoTIFF', '.json'))
+                    self.log(f'[{self.tile_id}] Original file removed.')
+                
         except Exception as e:
             self.log(e)
             return False
         
-        if remove_original:
-            os.remove(datacube_file_path)
-            self.log(f'[{self.tile_id}] Original file removed.')
         return True
     
     def download_and_enhance_COG(self, date_range: List[str], max_cloud_cover: int, output_crs:int, enhancements:Dict[str,Any], remove_original: Optional[bool] = True) -> None:
