@@ -13,7 +13,6 @@ from src.loggers import Logger
 from src.utils import get_geometry_envelope, get_date_range
 
 def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[bool] = False):
-    
     # Load configurations from the environment file (.env)
     load_dotenv(override=True)
 

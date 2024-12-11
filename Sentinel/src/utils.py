@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+from pathlib import Path
 import re
 import numpy as np
 from typing import Optional, List, Dict, Tuple
@@ -134,7 +135,8 @@ def get_geometry_envelope(tile_id:str) -> Tuple:
         tuple: (min_x, min_y, max_x, max_y) representing the bounding box.
     """
     # Load GeoJSON data
-    with open('data/sentinel2-grid.geojson', 'r') as file:
+    path = Path(os.path.dirname(__file__)).parent
+    with open(f'{path}/data/sentinel2-grid.geojson', 'r') as file:
         geojson = json.load(file)
     
     # Initialize bounding box coordinates
