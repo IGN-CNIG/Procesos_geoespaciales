@@ -4,10 +4,12 @@ import os
 from pathlib import Path
 import re
 import numpy as np
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 
 from area import area
 from osgeo import gdal
+
+AREA_TOLERANCE = 0.05
 
 def get_dates_from_filename(filename:str) -> List[str]:
     """
@@ -52,28 +54,49 @@ def remove_dates_from_filename(filename:str) -> str:
     return re.sub(r'_+', '_', cleaned_filename).strip('_')
 
 
-def get_area(feature:Dict[str, object]) -> float:
+def is_tile_complete(tile_id:str, bbox: Dict[str, Any], datetime:str) -> bool:
     """
-    Calculates the area of a given GeoJSON feature using the `area` module.
+    Determine if the tile image is complete by comparing its area to the expected tile area.
 
     Parameters:
-        feature (Dict[str, object]): A GeoJSON feature representing a polygon or multipolygon.
+        tile_id (str): The tile id to check its geometry in the grid file.
+        bbox (Dict[str, Any]): The bbox for the tiled image to check.
+        datetime(str): Datetime for the tiled image capture.
 
     Returns:
-        float: The calculated area of the feature in square meters.
+        bool: True if the image is complete (covers the entire tile), False otherwise.
 
     Example:
-        >>> geojson_feature = {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[[-73.981149, 40.7681], [-73.981149, 40.7681], [-73.979829, 40.7681], [-73.979829, 40.767344], [-73.981149, 40.7681]]]
-                }
-            }
-        >>> get_area(geojson_feature)
-        1234.56  # Area in square meters
+        >>> is_tile_complete('30SYH', [-0.727635807400437, 37.8068570326715, 0.566452796705863, 38.8262817087051], 2024-12-25T10:54:51.024000Z)
+        True
     """
-    return area(feature)
+    tile_bbox = get_bbox(tile_id)
+    tile_geojson = {
+        "type": "Polygon",
+        "coordinates": [[
+            [tile_bbox[0], tile_bbox[1]],  # Bottom-left
+            [tile_bbox[2], tile_bbox[1]],  # Bottom-right
+            [tile_bbox[2], tile_bbox[3]],  # Top-right
+            [tile_bbox[0], tile_bbox[3]],  # Top-left
+            [tile_bbox[0], tile_bbox[1]]   # Close the polygon
+        ]]
+    }
+    image_geojson = {
+        "type": "Polygon",
+        "coordinates": [[
+            [bbox[0], bbox[1]],  # Bottom-left
+            [bbox[2], bbox[1]],  # Bottom-right
+            [bbox[2], bbox[3]],  # Top-right
+            [bbox[0], bbox[3]],  # Top-left
+            [bbox[0], bbox[1]]   # Close the polygon
+        ]]
+    }
+    
+    tile_size = area(tile_geojson)/(1000*1000)
+    image_size = area(image_geojson)/(1000*1000)
+                
+    print(f'[{tile_id}] Date: {datetime}, Tile size: {tile_size}, Image size: {image_size}')
+    return round(image_size, 2) >= (round(tile_size, 2) - round(tile_size*AREA_TOLERANCE, 2))
 
 def get_date_range(days:int) -> List[str]:
     """
@@ -124,7 +147,7 @@ def get_season(date_str) -> Dict[str, Dict[str, int]]:
     else:
         return 'Winter'
 
-def get_geometry_envelope(tile_id:str) -> Tuple:
+def get_bbox(tile_id:str) -> Tuple:
     """
     Get the geometry envelope (bounding box) from a GeoJSON string.
     
@@ -164,22 +187,47 @@ def get_geometry_envelope(tile_id:str) -> Tuple:
                             max_x = max(max_x, x)
                             max_y = max(max_y, y)
 
-                elif geometry['type'] == 'MultiPolygon':
-                    # Iterate through each polygon
-                    for polygon in coords:
-                        for ring in polygon:
-                            for point in ring:
-                                x, y = point[0], point[1]
-                                min_x = min(min_x, x)
-                                min_y = min(min_y, y)
-                                max_x = max(max_x, x)
-                                max_y = max(max_y, y)
-
             # Return the bounding box as a tuple
             return (min_x, min_y, max_x, max_y)
 
     # If the tile_id is not found, return None
     return None
+
+def save_date_to_footprint(tile_id:str, image_metadata:Dict, service_dir:str) -> None:
+    grid_path = f'{service_dir}/Grid.geojson'
+    grid = {
+        "type": "FeatureCollection",
+        "features": []
+    }
+    tile_found = False
+    if os.path.exists(grid_path):
+        with open(grid_path, 'r') as file:
+            grid = json.load(file)
+            for tile in grid.get('features'):
+                if tile.get('properties').get('Name') == tile_id:
+                    tile_found = True
+                    tile['properties']['Date'] = image_metadata.get('properties').get('datetime')
+                    tile['properties']['CloudCover'] = image_metadata.get('properties').get('cloudCover')
+                    tile['properties']['ProcessingLevel'] = image_metadata.get('properties').get('processingLevel')
+    if not tile_found:
+        path = Path(os.path.dirname(__file__)).parent
+        with open(f'{path}/data/sentinel2-grid.geojson', 'r') as file:
+            geojson = json.load(file)
+            tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('Name') == tile_id]
+            if len(tiles) > 0:
+                grid.get('features').append({
+                    "type": "Feature",
+                    "properties": {
+                        "Name": tile_id,
+                        "Date": image_metadata.get('properties').get('datetime'),
+                        "CloudCover": image_metadata.get('properties').get('cloudCover'),
+                        "ProcessingLevel": image_metadata.get('properties').get('processingLevel')
+                    },
+                    "geometry": tiles[0].get('geometries')[0]
+                })
+                        
+    with open(f'{service_dir}/Grid.geojson', 'w') as file:
+        json.dump(grid, file, indent=4, ensure_ascii=False)
         
 def cumulative_count_cut(band:np.matrix, min_percentile:Optional[int]=2, max_percentile:Optional[int]=98) -> tuple:
     """
@@ -198,7 +246,7 @@ def cumulative_count_cut(band:np.matrix, min_percentile:Optional[int]=2, max_per
     max_val = np.nanpercentile(band, max_percentile)
     return (min_val,max_val)
 
-def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str, date:str, suffix:str = 'RGB') -> None:
+def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str, output_name:str, date:str, suffix:str = 'RGB') -> None:
     """
     Apply contrast enhancement to an image file based on seasonal data.
 
@@ -206,6 +254,7 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
         enhancements (Dict[str, Dict[str, int]]): Dictionary containing the enhancements to apply to the specific tile.
         input_file (str): The path to the input image file.
         output_dir (str): The path to the root directory to store the output image.
+        output_name (str): The name of the output file.
         area_name (str): The name of the area for which to apply the enhancement.
         date (str): The date of the image in the format 'YYYY-MM-DDTHH:MM:SS.sssZ'.
         suffix (str): The suffix to append to the output file name. Defaults to 'RGB'.
@@ -216,16 +265,15 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
     """
         
     if enhancements is not None:
-        origin_filename = os.path.basename(input_file)
+        
         gdal.UseExceptions()
         dataset = gdal.Open(input_file)
         if not dataset:
             raise FileNotFoundError(f"Unable to open {input_file}")
         num_bands = dataset.RasterCount
         # Create a new geotiff file where we are going to store the adjusted bands
-        file_name = remove_dates_from_filename(origin_filename)
-        corrected_file_path = f'{output_dir}/TEMP_{file_name}'
-        corrected_file_path_COG = f'{output_dir}/{file_name}'.replace('.GeoTIFF', '.tif')
+        corrected_file_path = f'{output_dir}/TEMP_{output_name}'
+        corrected_file_path_COG = f'{output_dir}/{output_name}'.replace('.GeoTIFF', '.tif')
 
         os.makedirs(os.path.dirname(corrected_file_path), exist_ok=True)
         driver = gdal.GetDriverByName('GTiff')
@@ -248,13 +296,13 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
                     band_min, band_max = cumulative_count_cut(band_data)
                     # Apply custom StretchToMinimumMaximum algorithm similar to QGIS
                     stretched_band = np.clip(((band_data - band_min) / (band_max - band_min)) * (new_max - new_min) + new_min, new_min, new_max)
-                    print(f'[{file_name}] Band {index}: Contrast enhancement applied')
+                    print(f'[{output_name}] Band {index}: Contrast enhancement applied')
                     # Scale 16 bits image to 8 bits image for the output
                     min_value = np.min(stretched_band)
                     max_value = np.max(stretched_band)
                     scaled_band = np.clip((band_data - min_value) / (max_value - min_value) * (255 - 0) + 0, 0, 255)
                     scaled_band = scaled_band.astype(np.uint8)
-                    print(f'[{file_name}] Band {index}: Scale change to to 8-bits')
+                    print(f'[{output_name}] Band {index}: Scale change to to 8-bits')
                     # Write to the output dataset
                     out_band = out_dataset.GetRasterBand(index)
                     out_band.WriteArray(scaled_band)
@@ -278,7 +326,8 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
             try:
                 # Perform the translation
                 gdal.Translate(destName=corrected_file_path_COG, srcDS=out_dataset, options=options)
-                print(f'[{file_name}] COG created successfully: {corrected_file_path_COG}')
+                print(f'[{output_name}] COG created successfully: {corrected_file_path_COG}')
+                os.remove(corrected_file_path)
             except Exception as e:
                 print(f"Error al ejecutar gdal.Translate: {e}")
 
@@ -286,4 +335,59 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
         band_data = None
         dataset = None
         out_dataset = None
-        os.remove(corrected_file_path)
+
+
+def build_mosaic(cog_directory: str, suffix:str) -> None:
+    """
+    Creates a mosaic from Cloud Optimized GeoTIFF (COG) files in a specified directory.
+
+    This function combines multiple COG files with a given suffix into a single mosaic.
+    The mosaic is first created as a Virtual Raster (VRT) and then translated into a 
+    Cloud Optimized GeoTIFF (COG) using GDAL.
+
+    Parameters:
+        cog_directory (str): The directory containing the input COG files.
+        suffix (str): The suffix to filter input COG files (e.g., '2023' will match files ending with '_2023.tif').
+
+    Outputs:
+        - A VRT file named `mosaic_<suffix>.vrt` in the input directory.
+        - A COG file named `mosaic_<suffix>.tif` in the input directory.
+
+    Notes:
+        - The output COG file uses the "GoogleMapsCompatible" tiling scheme and LZW compression.
+        - Metadata includes the current datetime in the TIFFTAG_DATETIME field.
+
+    Example:
+        build_mosaic("/path/to/cog/files", "RGB")
+        This will create:
+        - `/path/to/cog/files/mosaic_RGB.vrt`
+        - `/path/to/cog/files/mosaic_RGB.tif`
+    """
+    if os.path.exists(cog_directory) and len(os.listdir(cog_directory)) > 0:
+        # Output files
+        vrt_output = f'{cog_directory}/mosaic_{suffix}.vrt'
+        COG_output = f'{cog_directory}/mosaic_{suffix}.tif'
+
+        # List all COG files in the directory
+        cog_files = [os.path.join(cog_directory, f) for f in os.listdir(cog_directory) if f.endswith(f'{suffix}.tif')]
+        cog_files = sorted(cog_files, key=lambda x: x[1], reverse=True)
+
+        # Build the VRT (Virtual Raster)
+        gdal.BuildVRT(vrt_output, cog_files)
+        
+        options = gdal.TranslateOptions(
+            format="COG",
+            creationOptions=[
+                "TILING_SCHEME=GoogleMapsCompatible",
+                "COMPRESS=LZW",
+                "BIGTIFF=YES"
+            ],
+            metadataOptions={
+                "TIFFTAG_DATETIME": datetime.datetime.now().isoformat()
+            }
+        )
+
+        # Translate the VRT to a GeoTIFF
+        gdal.Translate(destName=COG_output, srcDS=vrt_output, options=options)
+
+        print(f'[{COG_output}] Mosaic created successfully.')

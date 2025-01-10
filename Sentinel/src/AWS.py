@@ -89,8 +89,6 @@ class AWSService():
         
         return response.json()["access_token"]
     
-    """
-    """
     # def get_file(self, file_path:str, session_token:str) -> gdal.Dataset:
     #     """
     #     Retrieves a file from AWS S3 using GDAL with the provided session token.

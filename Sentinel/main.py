@@ -10,20 +10,21 @@ from src.Sentinel import SentinelTile
 from src.SMTP import Email
 from src.loggers import Logger
 
-from src.utils import get_geometry_envelope, get_date_range
+from src.utils import get_bbox, get_date_range, build_mosaic
 
 def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[bool] = False):
     # Load configurations from the environment file (.env)
     load_dotenv(override=True)
 
     # Configuration settings
+    SERVICE_DIR = os.getenv('SERVICE_DIR')
     MAX_CLOUD_COVER = int(os.getenv('MAX_CLOUD_COVER')) or 5
     DAYS_OFFSET = int(os.getenv('DAYS_OFFSET')) or 30 # This must be enough so it detects an image with a valid cloud coverage!
     OUTPUT_CRS = os.getenv('OUTPUT_CRS') or 3857
     THREADS = int(os.getenv('THREADS')) or 2
 
     def execute_process(region_name, tile, enhancements):
-        if get_geometry_envelope(tile) is not None:
+        if get_bbox(tile) is not None:
             sentinel_tile = SentinelTile(
                 region_name=region_name,
                 tile_id=tile,
@@ -49,6 +50,9 @@ def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[b
             settings = json.load(f)
             for region_name, region in settings.items():
                 Parallel(n_jobs=THREADS)(delayed(execute_process)(region_name, tile, region['enhancement_data']) for tile in region['tiles'])
+    
+    build_mosaic(f'{SERVICE_DIR}/RGB', 'RGB')
+    build_mosaic(f'{SERVICE_DIR}/NirGB', 'NirGB')
     
     if send_email:
         today = datetime.today().strftime('%Y%m%d')

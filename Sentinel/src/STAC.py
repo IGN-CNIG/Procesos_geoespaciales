@@ -1,5 +1,7 @@
+import os
 import requests
 from typing import Optional, Generator, List, Dict
+from src.utils import is_tile_complete
 
 # NOTE: We cannot use pystac because the service does not implement the QUERY and SORT extensions, so we cannot filter the images.
 #       The pystac basic client only provides the basic query parameters: bbox, datetime, limit.
@@ -15,6 +17,7 @@ search = client.search(
 )
 search.matched()
 """
+MAX_SEARCH = 10000
 
 class Client():
     """
@@ -92,7 +95,6 @@ class Client():
         max_cloud_cover:Optional[int]=100,
         properties: Optional[dict]={},
         limit:Optional[int]=100,
-        latest: Optional[bool]=False
     ) -> Generator[Dict, None, None]:
         """
         Retrieves files (items) from a specific collection that match given criteria.
@@ -104,8 +106,7 @@ class Client():
             max_cloud_cover (Optional[int]): Maximum cloud cover percentage allowed for results (default is 100).
             properties (Optional[dict]): Additional properties to filter results.
             limit (Optional[int]): The maximum number of items to return per request (default is 100).
-            latest (Optional[bool]): Whether to return only the latest items (default is False).
-
+            
         Yields:
             Dict: A generator yielding items (files) matching the criteria.
         """
@@ -122,14 +123,14 @@ class Client():
         url_parameters.append('sortby=-datetime') # LATEST FIRST
         url = url + '&'.join(url_parameters)
         try:
-            yield from self.request_pages(url=url, max_cloud_cover=max_cloud_cover, properties=properties, latest=latest)
+            yield from self.request_pages(url=url, max_cloud_cover=max_cloud_cover, properties=properties)
         except requests.exceptions.ConnectionError:
             try:
-                yield from self.request_pages(url=url, max_cloud_cover=max_cloud_cover, properties=properties, latest=latest)
+                yield from self.request_pages(url=url, max_cloud_cover=max_cloud_cover, properties=properties)
             except requests.exceptions.ConnectionError:
                 raise
     
-    def request_pages(self, url:str, max_cloud_cover:int, properties:dict, latest:bool, start_datetime:Optional[str]=None) -> Generator[Dict, None, None]:
+    def request_pages(self, url:str, max_cloud_cover:int, properties:dict) -> Generator[Dict, None, None]:
         """
         Requests pages of items from the STAC API and filters them based on cloud cover, properties, and temporal criteria.
 
@@ -137,28 +138,42 @@ class Client():
             url (str): The URL to request items from.
             max_cloud_cover (int): Maximum cloud cover percentage allowed for results.
             properties (dict): Additional properties to filter results.
-            latest (bool): Whether to return only the latest items.
-            start_datetime (Optional[str]): The start datetime to filter results if 'latest' is True.
 
         Yields:
             Dict: A generator yielding items (files) matching the criteria.
         """
+        only_complete = only_latest = True
+        if os.getenv('ONLY_COMPLETE'):
+            only_complete = (os.getenv('ONLY_COMPLETE') == 'True')
+        if os.getenv('ONLY_LATEST'):
+            only_latest = (os.getenv('ONLY_LATEST') == 'True')
+        latest_found = False
+        total_images = 0
+        
         response = requests.get(url, timeout=120)
         if response.status_code == 200:
             data = response.json()
             features = data.get('features')
             if features:
-                yielded = 0
+                total_images += len(features)
                 features =[feature for feature in features if all((key, value) in feature['properties'].items() for key, value in properties.items())]
                 if max_cloud_cover and max_cloud_cover != 100:
                     features = [feature for feature in features if 'cloudCover' in feature['properties'].keys() and feature['properties']['cloudCover'] < max_cloud_cover]
-                if features and latest and not start_datetime:
-                    start_datetime = features[0]['properties']['start_datetime'][:10]
-                for feature in features:
-                    if not latest or (latest and feature['properties']['start_datetime'][:10] == start_datetime):
-                        yielded += 1
-                        yield feature
-                next_page = [link['href'] for link in data['links'] if link['rel'] == 'next']
-                next_page = next_page[0] if next_page else None
-                if next_page:
-                    yield from self.request_pages(url=next_page, max_cloud_cover=max_cloud_cover, properties=properties, latest=latest, start_datetime=start_datetime)
+                if only_complete:
+                    features = [feature for feature in features if is_tile_complete(properties.get('tileId'), feature['bbox'], feature['properties']['datetime'])]
+                if only_latest:
+                    if len(features) > 0:
+                        latest_found = True
+                        yield features[0]
+                else:
+                    yield from features
+                
+                if not latest_found:
+                    next_page = [link['href'] for link in data['links'] if link['rel'] == 'next']
+                    next_page = next_page[0] if next_page else None
+                    if next_page:
+                        yield from self.request_pages(url=next_page, max_cloud_cover=max_cloud_cover, properties=properties)
+                    elif total_images >= MAX_SEARCH:
+                        print(f'Maximum features search has been reached: {total_images}')
+        else:
+            yield from self.request_pages(url=url, max_cloud_cover=max_cloud_cover, properties=properties)

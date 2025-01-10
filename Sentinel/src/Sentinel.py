@@ -10,9 +10,8 @@ import openeo.rest
 from src.STAC import Client
 from src.AWS import AWSService
 from src.constants import S2_Bands
-from src.utils import get_area, get_geometry_envelope, apply_contrast_enhancement
+from src.utils import remove_dates_from_filename, get_bbox, apply_contrast_enhancement, save_date_to_footprint
 
-TILE_WIDTH = TILE_HEIGHT = 109.8 * 1000 # METERS
 
 
 class SentinelTile():
@@ -74,25 +73,6 @@ class SentinelTile():
                 cls.logger.info(message)
         else:
             print(message)
-        
-        
-    def get_bbox(self) -> List[float]:
-        """
-        Get the bounding box coordinates for the tile ID from the military grid.
-
-        Returns:
-            List[float]: A list representing the bounding box as [west, east, south, north].
-                        Returns an empty list if the tile is not found.
-
-        Example:
-            >>> tile.get_bbox()
-            [-9.55, 40.05, -9.20, 40.30]
-        """
-        envelope = get_geometry_envelope(self.tile_id)
-        if envelope is not None:
-            return [envelope[0], envelope[2], envelope[1], envelope[3]]
-        
-        return []
     
     def query_catalog(self, date_range: List[str], max_cloud_cover: Optional[int] = 100, level: Optional[str] = '2A') -> List[Dict[str, Any]]:
         """
@@ -117,28 +97,12 @@ class SentinelTile():
         self.log(f'[{self.tile_id}] Querying STAC Catalog for Sentinel 2 tile.')
         return self.stac_client.get_files(
             collectionId=f'SENTINEL-2',
-            spatial_extent=self.get_bbox(),
+            spatial_extent=get_bbox(self.tile_id),
             temporal_extent=date_range,
             max_cloud_cover=max_cloud_cover,
             properties={'productType':f'S2MSI{level}', 'tileId': self.tile_id},
             limit=750
         )
-        
-    def is_tile_complete(self, image_metadata: Dict[str, Any]) -> bool:
-        """
-        Determine if the tile image is complete by comparing its area to the expected tile area.
-
-        Parameters:
-            image_metadata (Dict[str, Any]): The metadata of the image to check.
-
-        Returns:
-            bool: True if the image is complete (covers the entire tile), False otherwise.
-
-        Example:
-            >>> tile.is_tile_complete(image_metadata)
-            True
-        """
-        return get_area(image_metadata.get('geometry')) >= (TILE_WIDTH * TILE_HEIGHT)
     
     def get_datacube(self, image_metadata: Dict[str, Any], max_cloud_cover: int, output_crs:int) -> openeo.DataCube:
         """
@@ -168,6 +132,18 @@ class SentinelTile():
         )
         return datacube.resample_spatial(resolution=0, projection=output_crs, method='cubic')
     
+    def _attempt_download(self, target_datacube: openeo.DataCube, file_name: str, suffix:str, processed_file_path: str) -> bool:
+        self.log(f'[{self.tile_id}] {suffix}: Downloading satellite image {file_name}...')
+                    
+        # Create a job for the datacube and download the results.
+        job = target_datacube.create_job(out_format="GTiff", title="Sentinel2_MA")
+        job.start_and_wait()
+        job.get_results().download_file(target=processed_file_path)
+        # This returns a proxy error
+        # rgb.download(outputfile=file_path, format='GTiff', validate=False)
+        self.log(f'[{self.tile_id}] {suffix}: Satellite image downloaded.')
+        return True
+    
     def download_datacube(self, target_datacube: openeo.DataCube, file_name: str, suffix: str) -> str:
         """
         Process and download the satellite imagery datacube as a GeoTIFF file.
@@ -186,27 +162,22 @@ class SentinelTile():
         processed_file_path = f'{self.datacubes_dir}/{file_name}_{suffix}.GeoTIFF'
         if not os.path.exists(processed_file_path):
             retries = 0
-            while retries < 100:
+            while retries < 200:
                 try:
-                    self.log(f'[{self.tile_id}] {suffix}: Downloading satellite image {file_name}...')
-                    
-                    # Create a job for the datacube and download the results.
-                    job = target_datacube.create_job(out_format="GTiff", title="Sentinel2_MA")
-                    job.start_and_wait()
-                    job.get_results().download_file(target=processed_file_path)
-                    # This returns a proxy error
-                    # rgb.download(outputfile=file_path, format='GTiff', validate=False)
-                    self.log(f'[{self.tile_id}] {suffix}: Satellite image downloaded.')
-                    return processed_file_path
+                    if self._attempt_download(target_datacube=target_datacube, file_name=file_name, suffix=suffix, processed_file_path=processed_file_path):
+                        return processed_file_path
                 except FileNotFoundError as fnf_error:
                     self.log(f"File not found during datacube processing: {fnf_error}", logging.ERROR)
                     raise
                 except openeo.rest.OpenEoApiPlainError:
                     self.log(f'[{self.tile_id}] ERROR. Retrying download in 5 seconds.', logging.WARNING)
                     time.sleep(5)
+                    retries += 1
                 except Exception as e:
-                    self.log(f"Unexpected error: {e}", logging.ERROR)
-                    raise
+                    self.log(f"[{self.tile_id}] Unexpected error: {e}", logging.ERROR)
+                    self.log(f"[{self.tile_id}] Attempting retry...")
+                    if self._attempt_download(target_datacube=target_datacube, file_name=file_name, suffix=suffix, processed_file_path=processed_file_path):
+                        return processed_file_path
             # If the loop completes without a successful download, raise an exception
             raise Exception(f"[{self.tile_id}] {suffix}: Failed to download datacube after 100 attempts.")
         else:
@@ -236,7 +207,15 @@ class SentinelTile():
                 with open(datacube_file_path.replace('.GeoTIFF', '.json'), 'w') as metadata:
                     json.dump(image_metadata, metadata, indent=4)
                 
-                apply_contrast_enhancement(enhancements, input_file=datacube_file_path, output_dir=self.service_dir, suffix=suffix, date=image_metadata['properties']['start_datetime'])
+                file_name = os.path.basename(datacube_file_path)
+                only_latest = False
+                if os.getenv('ONLY_LATEST'):
+                    only_latest = True if os.getenv('ONLY_LATEST') == 'True' else False
+                if only_latest:
+                    file_name = remove_dates_from_filename(file_name)
+                apply_contrast_enhancement(enhancements, input_file=datacube_file_path, output_dir=f'{self.service_dir}/{suffix}', output_name=file_name, suffix=suffix, date=image_metadata['properties']['start_datetime'])
+                save_date_to_footprint(self.tile_id, image_metadata, self.service_dir)
+                
                 self.log(f'[{self.tile_id}] {suffix}: Satellite image enhanced.')
                 if remove_original:
                     os.remove(datacube_file_path)
@@ -263,77 +242,66 @@ class SentinelTile():
         Example:
             >>> tile.download_and_enhance(date_range=[2024-01-01, 2024-12-31], max_cloud_cover=10)
         """
-        only_complete = only_latest = True
-        if os.getenv('ONLY_COMPLETE'):
-            only_complete = True if os.getenv('ONLY_COMPLETE') == 'True' else False
-        if os.getenv('ONLY_LATEST'):
-            only_latest = True if os.getenv('ONLY_LATEST') == 'True' else False
         
         imagery = self.query_catalog(date_range=date_range, max_cloud_cover=max_cloud_cover)
         images_found = success_rgb = success_nirgb = False
         for image_metadata in imagery:
             images_found = True
-            if not only_complete or (only_complete and self.is_tile_complete(image_metadata)):
-                file_name = image_metadata['id'].replace('.SAFE', '')
-                self.log(f'[{self.tile_id}] Processing image {file_name}')
-                
-                datacube = self.get_datacube(image_metadata, max_cloud_cover, output_crs)
-                # Process RGB bands
-                success_rgb = self.process_bands(datacube, file_name, S2_Bands.true_color_bands(), 'RGB', image_metadata, enhancements, remove_original)
-                # Process NirGB bands
-                success_nirgb = self.process_bands(datacube, file_name, S2_Bands.false_color_bands(), 'NirGB', image_metadata, enhancements, remove_original)
-                if success_rgb and success_nirgb and only_latest:
-                    break
-        if success_rgb and success_nirgb:
-            self.log(f'[{self.tile_id}] Image processing completed.')
-        else:
-            self.log(f'[{self.tile_id}] No complete image has been found for the date range {date_range}.')
+            new_date = image_metadata.get('properties').get('datetime')
+            with open(f'{self.service_dir}/Grid.geojson', 'r') as file:
+                geojson = json.load(file)
+                tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('Name') == self.tile_id]
+                if len(tiles) > 0:
+                    old_date = tiles[0].get('properties').get('Date')
+                    if old_date != new_date:
+                        file_name = image_metadata['id'].replace('.SAFE', '')
+                        self.log(f'[{self.tile_id}] Processing image {file_name}')
+                        
+                        datacube = self.get_datacube(image_metadata, max_cloud_cover, output_crs)
+                        # Process RGB bands
+                        success_rgb = self.process_bands(datacube, file_name, S2_Bands.true_color_bands(), 'RGB', image_metadata, enhancements, remove_original)
+                        # Process NirGB bands
+                        success_nirgb = self.process_bands(datacube, file_name, S2_Bands.false_color_bands(), 'NirGB', image_metadata, enhancements, remove_original)
+                    else:
+                        self.log(f'[{self.tile_id}] There is already an image for the same date {new_date}')
+            
         if not images_found:
-            self.log(f'[{self.tile_id}] No images have been found for the date range {date_range}.')
+            self.log(f'[{self.tile_id}] No images have been found for the date range {date_range}.', logging.WARNING)
+        else:
+            if success_rgb and success_nirgb:
+                self.log(f'[{self.tile_id}] Image processing completed.')
+            else:
+                if not success_rgb:
+                    self.log(f'[{self.tile_id}] There has been an error while processing RGB bands.')
+                if not success_nirgb:
+                    self.log(f'[{self.tile_id}] There has been an error while processing NirGB bands.')
     
     def download_raw(self, date_range: List[str], max_cloud_cover: int, s3_endpoint:Optional[str] = 'https://eodata.dataspace.copernicus.eu') -> None:
-        only_complete = only_latest = True
-        if os.getenv('ONLY_COMPLETE'):
-            only_complete = True if os.getenv('ONLY_COMPLETE') == 'True' else False
-        if os.getenv('ONLY_LATEST'):
-            only_latest = True if os.getenv('ONLY_LATEST') == 'True' else False
-        
         AWS = AWSService()
         imagery = self.query_catalog(date_range=date_range, max_cloud_cover=max_cloud_cover)
         images_found = False
         for image_metadata in imagery:
             images_found = True
-            if not only_complete or (only_complete and self.is_tile_complete(image_metadata)):
-                self.log(f'[{self.tile_id}] Instanciating AWS S3 service...')
-                file_name = image_metadata['id'].replace('.SAFE', '')
-                self.log(f'[{self.tile_id}] Downloading raw data for {file_name}')
-                AWS.download_raw_product(image=image_metadata, endpoint=s3_endpoint)
-                if only_latest:
-                    break
-                self.log(f'[{self.tile_id}] Raw product downlad completed.')
+
+            self.log(f'[{self.tile_id}] Instanciating AWS S3 service...')
+            file_name = image_metadata['id'].replace('.SAFE', '')
+            self.log(f'[{self.tile_id}] Downloading raw data for {file_name}')
+            AWS.download_raw_product(image=image_metadata, endpoint=s3_endpoint)
+            self.log(f'[{self.tile_id}] Raw product downlad completed.')
+        
         if not images_found:
-            self.log(f'[{self.tile_id}] No images have been found for the date range {date_range}.')
+            self.log(f'[{self.tile_id}] No images have been found for the date range {date_range}.', logging.WARNING)
         
         
     """
-    def get_images(self, date_range: List[str], max_cloud_cover: int, username:Optional[str] = None, password:Optional[str] = None, s3_client_id:Optional[str] = 'cdse-public', s3_token_endpoint:Optional[str] = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token') -> None:
-        only_complete = True
-        only_latest = True
-        if os.getenv('ONLY_COMPLETE'):
-            only_complete = True if os.getenv('ONLY_COMPLETE') == 'True' else False
-        if os.getenv('ONLY_LATEST'):
-            only_latest = True if os.getenv('ONLY_LATEST') == 'True' else False
-        
+    def get_images(self, date_range: List[str], max_cloud_cover: int, username:Optional[str] = None, password:Optional[str] = None, s3_client_id:Optional[str] = 'cdse-public', s3_token_endpoint:Optional[str] = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token') -> None:        
         AWS = AWSService()
         gdal_images = []
         imagery = self.query_catalog(date_range=date_range, max_cloud_cover=max_cloud_cover)
         for image_metadata in imagery:
-            if not only_complete or (only_complete and self.is_tile_complete(image_metadata)):
-                self.log(f'[{self.tile_id}] Instanciating AWS S3 service...')
-                token = AWS.get_token(s3_client_id, s3_token_endpoint, username, password)
-                gdal_images.append(AWS.get_file(image_metadata['assets']['PRODUCT']['alternate']['s3']['href'], token))
-                if only_latest:
-                    break
+            self.log(f'[{self.tile_id}] Instanciating AWS S3 service...')
+            token = AWS.get_token(s3_client_id, s3_token_endpoint, username, password)
+            gdal_images.append(AWS.get_file(image_metadata['assets']['PRODUCT']['alternate']['s3']['href'], token))
 
         return gdal_images
     """
