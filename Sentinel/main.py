@@ -22,6 +22,7 @@ def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[b
     DAYS_OFFSET = int(os.getenv('DAYS_OFFSET')) or 30 # This must be enough so it detects an image with a valid cloud coverage!
     OUTPUT_CRS = os.getenv('OUTPUT_CRS') or 3857
     THREADS = int(os.getenv('THREADS')) or 2
+    MOSAICKING = (os.getenv('BUILD_MOSAIC') == 'True')
 
     def execute_process(region_name, tile, enhancements):
         if get_bbox(tile) is not None:
@@ -51,8 +52,10 @@ def main_process(project_path:Optional[str] = os.getcwd(), send_email:Optional[b
             for region_name, region in settings.items():
                 Parallel(n_jobs=THREADS)(delayed(execute_process)(region_name, tile, region['enhancement_data']) for tile in region['tiles'])
     
-    build_mosaic(f'{SERVICE_DIR}/RGB', 'RGB')
-    build_mosaic(f'{SERVICE_DIR}/NirGB', 'NirGB')
+    if MOSAICKING:
+        for resolution in [200, 100, 50]:
+            build_mosaic(f'{SERVICE_DIR}/RGB', 'RGB', resolution)
+            build_mosaic(f'{SERVICE_DIR}/NirGB', 'NirGB', resolution)
     
     if send_email:
         today = datetime.today().strftime('%Y%m%d')

@@ -277,9 +277,27 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
 
         os.makedirs(os.path.dirname(corrected_file_path), exist_ok=True)
         driver = gdal.GetDriverByName('GTiff')
-        out_dataset = driver.Create(corrected_file_path, dataset.RasterXSize, dataset.RasterYSize, num_bands, gdal.GDT_Byte) # The satellite images are returned in 16-bits, but we need an 8-bits imageº1
+        
+        black_pixel_mask = None
+        for index in range(1, num_bands + 1):
+            band = dataset.GetRasterBand(index)
+            band_data = band.ReadAsArray()
+            band_mask = band_data == 0
+            black_pixel_mask = band_mask if black_pixel_mask is None else (black_pixel_mask & band_mask)
+
+        # Step 2: Create an alpha band based on the black pixel mask
+        alpha_band = np.where(black_pixel_mask, 0, 255).astype(np.uint8)  # Transparent (0) for black pixels, opaque (255) otherwise
+        
+        # Step 3: Modify the output dataset to include the alpha band
+        out_dataset = driver.Create(corrected_file_path, dataset.RasterXSize, dataset.RasterYSize, num_bands + 1, gdal.GDT_Byte) # The satellite images are returned in 16-bits, but we need an 8-bits imageº1
         out_dataset.SetProjection(dataset.GetProjection())
         out_dataset.SetGeoTransform(dataset.GetGeoTransform())
+        
+        # Write the alpha band to the last band of the output dataset
+        out_alpha_band = out_dataset.GetRasterBand(num_bands + 1)
+        out_alpha_band.WriteArray(alpha_band)
+        out_alpha_band.SetNoDataValue(0)
+        
         # Look for the new min and max for the stretch, depending on the season of the year the images are taken
         new_min = -32768
         new_max = 32767
@@ -306,7 +324,7 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
                     # Write to the output dataset
                     out_band = out_dataset.GetRasterBand(index)
                     out_band.WriteArray(scaled_band)
-                    #out_band.SetNoDataValue(0)
+                    out_band.SetNoDataValue(0)
                 else:
                     raise ValueError(f'Could not read the band {index}, image potentially faulty.')
             except:
@@ -337,7 +355,7 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
         out_dataset = None
 
 
-def build_mosaic(cog_directory: str, suffix:str) -> None:
+def build_mosaic(cog_directory: str, suffix:str, resolution:int) -> None:
     """
     Creates a mosaic from Cloud Optimized GeoTIFF (COG) files in a specified directory.
 
@@ -347,10 +365,10 @@ def build_mosaic(cog_directory: str, suffix:str) -> None:
 
     Parameters:
         cog_directory (str): The directory containing the input COG files.
-        suffix (str): The suffix to filter input COG files (e.g., '2023' will match files ending with '_2023.tif').
+        suffix (str): The suffix to filter input COG files (e.g., 'RGB' will match files ending with '_RGB.tif').
+        resolution (float): The target resolution in map units (e.g., meters per pixel). If None, keeps original resolution.
 
     Outputs:
-        - A VRT file named `mosaic_<suffix>.vrt` in the input directory.
         - A COG file named `mosaic_<suffix>.tif` in the input directory.
 
     Notes:
@@ -360,13 +378,12 @@ def build_mosaic(cog_directory: str, suffix:str) -> None:
     Example:
         build_mosaic("/path/to/cog/files", "RGB")
         This will create:
-        - `/path/to/cog/files/mosaic_RGB.vrt`
         - `/path/to/cog/files/mosaic_RGB.tif`
     """
     if os.path.exists(cog_directory) and len(os.listdir(cog_directory)) > 0:
         # Output files
-        vrt_output = f'{cog_directory}/mosaic_{suffix}.vrt'
-        COG_output = f'{cog_directory}/mosaic_{suffix}.tif'
+        vrt_output = f'{cog_directory}/mosaic_{suffix}_{resolution}.vrt'
+        COG_output = f'{cog_directory}/mosaic_{suffix}_{resolution}.tif'
 
         # List all COG files in the directory
         cog_files = [os.path.join(cog_directory, f) for f in os.listdir(cog_directory) if f.endswith(f'{suffix}.tif')]
@@ -375,19 +392,41 @@ def build_mosaic(cog_directory: str, suffix:str) -> None:
         # Build the VRT (Virtual Raster)
         gdal.BuildVRT(vrt_output, cog_files)
         
-        options = gdal.TranslateOptions(
-            format="COG",
-            creationOptions=[
-                "TILING_SCHEME=GoogleMapsCompatible",
-                "COMPRESS=LZW",
-                "BIGTIFF=YES"
-            ],
-            metadataOptions={
-                "TIFFTAG_DATETIME": datetime.datetime.now().isoformat()
-            }
-        )
+        options = None
+        
+        # Adjust resolution if specified
+        if resolution is not None:
+            options = gdal.TranslateOptions(
+                format="COG",
+                creationOptions=[
+                    "TILING_SCHEME=GoogleMapsCompatible",
+                    "COMPRESS=LZW",
+                    "BIGTIFF=YES"
+                ],
+                metadataOptions={
+                    "TIFFTAG_DATETIME": datetime.datetime.now().isoformat()
+                },
+                xRes=resolution,
+                yRes=resolution
+            )
+        else:
+            options = gdal.TranslateOptions(
+                format="COG",
+                creationOptions=[
+                    "TILING_SCHEME=GoogleMapsCompatible",
+                    "COMPRESS=LZW",
+                    "BIGTIFF=YES"
+                ],
+                metadataOptions={
+                    "TIFFTAG_DATETIME": datetime.datetime.now().isoformat()
+                }
+            )
 
         # Translate the VRT to a GeoTIFF
         gdal.Translate(destName=COG_output, srcDS=vrt_output, options=options)
-
-        print(f'[{COG_output}] Mosaic created successfully.')
+        
+        if os.path.exists(COG_output):
+            os.remove(vrt_output)
+            print(f'[{COG_output}] Mosaic created successfully.')
+        else:
+            print(f'[{COG_output}] Error in mosaic generation, file not created.')

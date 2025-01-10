@@ -246,24 +246,28 @@ class SentinelTile():
         imagery = self.query_catalog(date_range=date_range, max_cloud_cover=max_cloud_cover)
         images_found = success_rgb = success_nirgb = False
         for image_metadata in imagery:
+            geojson_path = f'{self.service_dir}/Grid.geojson'
             images_found = True
             new_date = image_metadata.get('properties').get('datetime')
-            with open(f'{self.service_dir}/Grid.geojson', 'r') as file:
-                geojson = json.load(file)
-                tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('Name') == self.tile_id]
-                if len(tiles) > 0:
-                    old_date = tiles[0].get('properties').get('Date')
-                    if old_date != new_date:
-                        file_name = image_metadata['id'].replace('.SAFE', '')
-                        self.log(f'[{self.tile_id}] Processing image {file_name}')
-                        
-                        datacube = self.get_datacube(image_metadata, max_cloud_cover, output_crs)
-                        # Process RGB bands
-                        success_rgb = self.process_bands(datacube, file_name, S2_Bands.true_color_bands(), 'RGB', image_metadata, enhancements, remove_original)
-                        # Process NirGB bands
-                        success_nirgb = self.process_bands(datacube, file_name, S2_Bands.false_color_bands(), 'NirGB', image_metadata, enhancements, remove_original)
-                    else:
-                        self.log(f'[{self.tile_id}] There is already an image for the same date {new_date}')
+            process = True
+            if os.path.exists(geojson_path):
+                with open(geojson_path, 'r') as file:
+                    geojson = json.load(file)
+                    tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('Name') == self.tile_id]
+                    if len(tiles) > 0:
+                        old_date = tiles[0].get('properties').get('Date')
+                        if old_date == new_date:
+                            self.log(f'[{self.tile_id}] There is already an image for the same date {new_date}')
+                            process = False
+            if process:
+                file_name = image_metadata['id'].replace('.SAFE', '')
+                self.log(f'[{self.tile_id}] Processing image {file_name}')
+                
+                datacube = self.get_datacube(image_metadata, max_cloud_cover, output_crs)
+                # Process RGB bands
+                success_rgb = self.process_bands(datacube, file_name, S2_Bands.true_color_bands(), 'RGB', image_metadata, enhancements, remove_original)
+                # Process NirGB bands
+                success_nirgb = self.process_bands(datacube, file_name, S2_Bands.false_color_bands(), 'NirGB', image_metadata, enhancements, remove_original)
             
         if not images_found:
             self.log(f'[{self.tile_id}] No images have been found for the date range {date_range}.', logging.WARNING)
