@@ -213,7 +213,7 @@ def save_date_to_footprint(tile_id:str, image_metadata:Dict, service_dir:str) ->
         path = Path(os.path.dirname(__file__)).parent
         with open(f'{path}/data/sentinel2-grid.geojson', 'r') as file:
             geojson = json.load(file)
-            tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('Name') == tile_id]
+            tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('tileId') == tile_id]
             if len(tiles) > 0:
                 grid.get('features').append({
                     "type": "Feature",
