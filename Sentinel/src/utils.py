@@ -193,41 +193,47 @@ def get_bbox(tile_id:str) -> Tuple:
     # If the tile_id is not found, return None
     return None
 
-def save_date_to_footprint(tile_id:str, image_metadata:Dict, service_dir:str) -> None:
-    grid_path = f'{service_dir}/Grid.geojson'
+def save_image_metadata(image_metadata:Dict, output_dir:str, output_name:str) -> None:
+    """
+    Save the image metadata to a JSON file in the specified service directory.
+
+    Parameters:
+        image_metadata (Dict): The metadata of the image to save.
+        output_dir (str): The directory where the metadata will be saved.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    output_name = output_name.replace('.GeoTIFF','.json')
+    output_file = os.path.join(output_dir, output_name)
+    with open(output_file, 'w') as file:
+        json.dump(image_metadata, file, indent=4, ensure_ascii=False)
+        print(f'[{output_name}] Metadata file created successfully: {output_file}')
+        
+
+def save_footprints(service_dir:str, suffix: str = 'RGB') -> None:
     grid = {
         "type": "FeatureCollection",
         "features": []
     }
-    tile_found = False
-    if os.path.exists(grid_path):
-        with open(grid_path, 'r') as file:
-            grid = json.load(file)
-            for tile in grid.get('features'):
-                if tile.get('properties').get('Name') == tile_id:
-                    tile_found = True
-                    tile['properties']['Date'] = image_metadata.get('properties').get('datetime')
-                    tile['properties']['CloudCover'] = image_metadata.get('properties').get('cloudCover')
-                    tile['properties']['ProcessingLevel'] = image_metadata.get('properties').get('processingLevel')
-    if not tile_found:
-        path = Path(os.path.dirname(__file__)).parent
-        with open(f'{path}/data/sentinel2-grid.geojson', 'r') as file:
-            geojson = json.load(file)
-            tiles = [tile for tile in geojson.get('features') if tile.get('properties').get('tileId') == tile_id]
-            if len(tiles) > 0:
+    metadata_dir = f'{service_dir}/{suffix}'
+    for filename in os.listdir(metadata_dir):
+        if filename.endswith('.json'):
+            with open(os.path.join(metadata_dir, filename), 'r') as file:
+                data = json.load(file)
                 grid.get('features').append({
                     "type": "Feature",
                     "properties": {
-                        "Name": tile_id,
-                        "Date": image_metadata.get('properties').get('datetime'),
-                        "CloudCover": image_metadata.get('properties').get('cloudCover'),
-                        "ProcessingLevel": image_metadata.get('properties').get('processingLevel')
+                        "Name": data.get('properties').get('tileId'),
+                        "Date": data.get('properties').get('datetime'),
+                        "CloudCover": data.get('properties').get('cloudCover'),
+                        "ProcessingLevel": data.get('properties').get('processingLevel')
                     },
-                    "geometry": tiles[0].get('geometries')[0]
+                    "geometry": data.get('geometry')
                 })
                         
-    with open(f'{service_dir}/Grid.geojson', 'w') as file:
+    grid_path = f'{service_dir}/Grid.geojson'
+    with open(grid_path, 'w') as file:
         json.dump(grid, file, indent=4, ensure_ascii=False)
+        print(f'[Grid] Grid file created successfully: {grid_path}')
         
 def cumulative_count_cut(band:np.matrix, min_percentile:Optional[int]=2, max_percentile:Optional[int]=98) -> tuple:
     """
@@ -272,8 +278,9 @@ def apply_contrast_enhancement(enhancements:str, input_file:str, output_dir:str,
             raise FileNotFoundError(f"Unable to open {input_file}")
         num_bands = dataset.RasterCount
         # Create a new geotiff file where we are going to store the adjusted bands
-        corrected_file_path = f'{output_dir}/TEMP_{output_name}'
-        corrected_file_path_COG = f'{output_dir}/{output_name}'.replace('.GeoTIFF', '.tif')
+        corrected_file_path = os.path.join(output_dir, f'TEMP_{output_name}')
+        output_name = output_name.replace('.GeoTIFF', '.tif')
+        corrected_file_path_COG = os.path.join(output_dir, output_name)
 
         os.makedirs(os.path.dirname(corrected_file_path), exist_ok=True)
         driver = gdal.GetDriverByName('GTiff')
@@ -382,8 +389,8 @@ def build_mosaic(cog_directory: str, suffix:str, resolution:int) -> None:
     """
     if os.path.exists(cog_directory) and len(os.listdir(cog_directory)) > 0:
         # Output files
-        vrt_output = f'{cog_directory}/mosaic_{suffix}_{resolution}.vrt'
-        COG_output = f'{cog_directory}/mosaic_{suffix}_{resolution}.tif'
+        vrt_output = os.path.join(cog_directory, f'mosaic_{suffix}_{resolution}.vrt')
+        COG_output = os.path.join(cog_directory, f'mosaic_{suffix}_{resolution}.tif')
 
         # List all COG files in the directory
         cog_files = [os.path.join(cog_directory, f) for f in os.listdir(cog_directory) if f.endswith(f'{suffix}.tif')]

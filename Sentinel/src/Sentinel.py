@@ -10,7 +10,7 @@ import openeo.rest
 from src.STAC import Client
 from src.AWS import AWSService
 from src.constants import S2_Bands
-from src.utils import remove_dates_from_filename, get_bbox, apply_contrast_enhancement, save_date_to_footprint
+from src.utils import remove_dates_from_filename, get_bbox, apply_contrast_enhancement, save_image_metadata
 
 
 
@@ -214,7 +214,11 @@ class SentinelTile():
                 if only_latest:
                     file_name = remove_dates_from_filename(file_name)
                 apply_contrast_enhancement(enhancements, input_file=datacube_file_path, output_dir=f'{self.service_dir}/{suffix}', output_name=file_name, suffix=suffix, date=image_metadata['properties']['start_datetime'])
-                save_date_to_footprint(self.tile_id, image_metadata, self.service_dir)
+                # The code `save_image_metadata` appears to be a function or method call in Python.
+                # However, without seeing the implementation of the function or method, it is not
+                # possible to determine exactly what it is doing. The name suggests that it may be
+                # used to save metadata related to an image.
+                save_image_metadata(image_metadata=image_metadata, output_dir=f'{self.service_dir}\\{suffix}', output_name=file_name)
                 
                 self.log(f'[{self.tile_id}] {suffix}: Satellite image enhanced.')
                 if remove_original:
